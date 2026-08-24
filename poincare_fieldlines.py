@@ -4,7 +4,7 @@ Field line tracing borrowed from Chris Smiet.
 
 Traces field lines through 4 groups of toroidal cross sections.
 
-E.g. Group 1 is phi/pi = 0.0, 0.4, 0.8, 1.2, 1.6 and all the crossings for this cross section are collated onto panel 1 of the plots.
+E.g. Group 0 is phi/pi = 0.0, 0.4, 0.8, 1.2, 1.6 and all the crossings for this cross section are collated onto panel 1 of the plots.
 
 Run this once for a given configuration and then load the saved .npz data with load_poincare_data() in subsequent scripts.
 """

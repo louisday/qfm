@@ -2,7 +2,7 @@
 First 5 entries are non-planar coil currents.
 Last 2 entries are planar coil currents.
 
-Currents are given as ratios and are all multiplied by the current scale to match W7-X.
+Currents are given as ratios and all are multiplied by the current scale to match W7-X.
 
 Note that the negative current scale ensures that B_phi, toroidal flux and the G value in the Boozer solves are all positive.
 """

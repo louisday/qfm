@@ -18,9 +18,9 @@ import numpy as np
 from simsopt._core import load
 
 from w7x_config import build_field
-from initial_qfm_surface import (CONFIG, NPHI, optimise_qfm, plot_all,
-                                 resample_surface, save_surface,
-                                 surface_path)
+from initial_qfm_surface import (CONFIG, CUSP_NTHETA, NPHI, cross_section_rz,
+                                 optimise_qfm, plot_all, resample_surface,
+                                 save_surface, surface_path)
 
 # True means save each surface. False means do not save the surface but still show the plot.
 SAVE = False

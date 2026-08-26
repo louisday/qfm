@@ -58,6 +58,7 @@ NPHI = NTHETA = 40
 
 #The resolution of the surface on the cross-section plot at phi=0.
 PLOT_NTHETA = 400
+CUSP_NTHETA = 3000        # samples used to resolve a cusp
 
 # Which cross-sections to show. Units are phi/pi so (0.0, 0.1, 0.2, 0.3) is a four panel plot of the first field period.
 PLOT_PHIS_OVER_PI = (0.0, 0.1, 0.2, 0.3)
@@ -293,3 +294,4 @@ if __name__ == "__main__":
              phis_over_pi=PLOT_PHIS_OVER_PI,
              filename=plot_file,
              title=f"QFM surface and initial guess, {CONFIG}")
+

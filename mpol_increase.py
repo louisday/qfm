@@ -37,7 +37,7 @@ FLUXES = (2.30,)
 POINCARE_N = 80           # no. of field lines in the dataset to load
 POINCARE_TMAX = 4000      # tmax of the dataset to load
 
-# Which cross-sections to show. Units are phi/pi so (0.0, 0.1, 0.2, 0.3) is a four panel plot of the first field period.
+# Choose which cross-sections to show. Units are phi/pi so (0.0, 0.1, 0.2, 0.3) is a four panel plot of the first field period.
 PLOT_PHIS_OVER_PI = (0.0, 0.1, 0.2, 0.3)
 
 MPOLS = (MPOL_FIRST,) + tuple(range(MPOL_FIRST + 1, MPOL_MAX + 1))

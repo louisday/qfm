@@ -1,20 +1,30 @@
 """Make a QFM surface with a given toroidal flux.
 
-Plot at phi=0:
+We use simsopt's QfmSurface object with the optimisers to compute a QFM surface starting from a circular tube centred
+around the magnetic axis.
+
+Key parameters to set:
+- the configuration to use.
+- the flux to target. We recommend targeting fluxes that correspond to surfaces inside the nested surfaces region.
+ie. in the range ~0.2 to 1.5Wb for the standard configuration of W7-X.
+- the Fourier modes to optimise (mpol=3 is the safest setting for the initial surfaces).
+- the grid to optimise on. We find that NPHI = NTHETA = 40 is sufficient.
+- the grid to plot on. This takes the surface and samples points to make a plot and so can be set much higher than above.
+
+The script then makes a QFM surface, saves it and plots at phi=0:
  - the Poincare scatter data
  - the magnetic axis
  - the initial tube surface cross-section
  - the QFM surface cross-section
 
 
-Note that this method can produce degenerate surfaces if the toroidal flux is too small or large.
-We recommend targeting a flux in the range ~0.2 - 1.5 Wb for the standard configuration of W7-X.
-
-To compute QFM surfaces outside this range it is safer to use the flux continuation script.
+To compute QFM surfaces outside the recommended flux range it is safer/more successful to use the
+flux continuation script.
 
 
 """
 
+import time
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -26,11 +36,12 @@ from simsopt.field import BiotSavart
 from simsopt.geo import QfmSurface, SurfaceRZFourier, ToroidalFlux
 
 from w7x_config import NFP, build_field
+from poincare_fieldlines import PHIS_OVER_PI as TRACED_PHIS
 
 CONFIG = "standard"
-SAVE = False             # True means save the surface. False means do not save the surface but still show the plot.
+SAVE = True             # True means save the surface. False means do not save the surface but still show the plot.
 
-TARGET_FLUX = 0.50      # Wb. Initial tube will have this flux.
+TARGET_FLUX = 0.30      # Wb. Initial tube will have this flux.
 MPOL = 3               # No. of Fourier modes to optimise. We set mpol = ntor. 3 is the safest initial guess.
 
 """" When we create a initial tube surface we need to specify the minor radius.
@@ -43,13 +54,21 @@ RADIUS_BRACKET = (0.05, 0.60)
 TRUSTED_RADII = (0.15, 0.50)
 
 #The resolution of the quadrature grid the QFM residual is evaluated on.
-NPHI = NTHETA = 80
+NPHI = NTHETA = 40
 
 #The resolution of the surface on the cross-section plot at phi=0.
 PLOT_NTHETA = 400
 
-# The folder name to save surfaces into. They will be saved as "qfm surfaces [config]".ok
+# Which cross-sections to show. Units are phi/pi so (0.0, 0.1, 0.2, 0.3) is a four panel plot of the first field period.
+PLOT_PHIS_OVER_PI = (0.0, 0.1, 0.2, 0.3)
+
+# The folder name to save surfaces into. They will be saved as "qfm surfaces [config]".
 SURFACE_DIR = "qfm surfaces"
+
+# Select the Poincare data to load from poincare_fieldlines.py
+POINCARE_N = 80           # no. of field lines in the dataset to load
+POINCARE_TMAX = 4000      # tmax of the dataset to load
+
 
 
 def new_surface(mpol=MPOL, nphi=NPHI, ntheta=NTHETA):
@@ -141,9 +160,13 @@ def optimise_qfm(field, surface, target_flux, tol=1e-9):
     flux = ToroidalFlux(surface, BiotSavart(field.coils))
     qfm = QfmSurface(BiotSavart(field.coils), surface, flux, target_flux)
 
+    t0 = time.perf_counter()
     qfm.minimize_qfm_penalty_constraints_LBFGS(tol=tol, maxiter=1000,
                                                constraint_weight=1.0)
+    t1 = time.perf_counter()
     qfm.minimize_qfm_exact_constraints_SLSQP(tol=tol, maxiter=1000)
+    t2 = time.perf_counter()
+    print(f"    LBFGS {t1 - t0:.1f} s, SLSQP {t2 - t1:.1f} s")
 
     return float(np.linalg.norm(qfm.qfm.J()))
 
@@ -158,15 +181,15 @@ def make_qfm_surface(field, axis, target_flux=TARGET_FLUX, mpol=MPOL):
 
     surface = initial_surface(axis, minor_radius, mpol) #Build tube.
 
-    initial_rz = cross_section_rz(surface) #Record tube cross-section.
+    guess = resample_surface(surface) #Record tube cross-section.
 
     residual = optimise_qfm(field, surface, target_flux) #Deform tube to qfm surface, return residual.
 
-    return surface, initial_rz, toroidal_flux(field, surface), residual
+    return surface, guess, toroidal_flux(field, surface), residual
 
 
 def surface_path(flux, config=CONFIG, nphi=NPHI, ntheta=NTHETA, mpol=MPOL):
-    """Determine the folder & filename given to each surface.
+    """Determine the folder & filename to give to each surface.
     New folder for each config. Each surface is labelled by its flux, grid and Fourier resolution
     """
 
@@ -185,48 +208,56 @@ def save_surface(surface, flux, config=CONFIG):
     return path
 
 
-def plot_all(surfaces_by_flux, poincare_r, poincare_z, axis, initials=(),
+def plot_all(surfaces_by_flux, poincare_r, poincare_z, poincare_panel, axis,
+             initials=(), phis_over_pi=PLOT_PHIS_OVER_PI,
              filename=None, title="", show=True):
-    """Plot 4 things simultaneously at phi=0:
-    - Grey Poincare scatter data.
-    - One (or more) QFM surface cross-section(s).
-    - Any initial guess surface in a dashed black line.
-    - The magnetic axis as a red cross.
+    """Plot QFM surfaces over the Poincare data at the specified cross-sections.
 
-    Arguments:
-    - surfaces_by_flux is a list of (flux, surface) pairs.
-    - poincare_r and z is the Poincare scatter data.
-    - axis is the magnetic axis.
-    - initials is the initial guess surface cross-section.
-    - filename=None means do not save the figure.
-    - title="" allows a plot title.
-    - show=True shows the plot in a window.
-
+    surfaces_by_flux is a list of (flux, surface).
+    initials is a list of initial surfaces, drawn dashed.
+    phis_over_pi determines the cross-section.
     """
-    axis_xyz = axis.gamma()[0]
+    traced = np.asarray(TRACED_PHIS)
+    panel_for = [int(np.argmin(np.abs(traced - p))) for p in phis_over_pi]
 
-    plt.figure(figsize=(7, 9))
-    plt.scatter(poincare_r, poincare_z, s=0.25, color="0.45", linewidths=0)
+    n = len(phis_over_pi)
+    ncols = 2 if n > 1 else 1
+    nrows = (n + ncols - 1) // ncols
+    figure, axes = plt.subplots(nrows, ncols, figsize=(6*ncols, 6.5*nrows),
+                                squeeze=False)
+    flat = axes.ravel()
+    for ax in flat[n:]:
+        ax.axis("off")
 
-    for flux, surface in surfaces_by_flux:
-        r, z = cross_section_rz(surface)
-        plt.plot(r, z, "-", linewidth=2, label=f"flux = {flux:.3f} Wb")
+    for i, ax in enumerate(flat[:n]):
+        phi = phis_over_pi[i]
 
-    for r, z in initials:
-        plt.plot(r, z, "--", linewidth=2.5, color="k", zorder=4,
-                 label="initial guess")
+        here = poincare_panel == panel_for[i]
+        ax.scatter(poincare_r[here], poincare_z[here], s=0.25, color="0.45",
+                   linewidths=0)
 
-    plt.plot(np.sqrt(axis_xyz[0]**2 + axis_xyz[1]**2), axis_xyz[2], "rx",
-             markersize=12, markeredgewidth=2, zorder=5, label="magnetic axis")
+        for flux, surface in surfaces_by_flux:
+            r, z = cross_section_rz(surface, phi)
+            ax.plot(r, z, "-", linewidth=1.5, label=f"flux = {flux:.3f} Wb")
 
-    plt.gca().set_aspect("equal")
-    plt.xlabel("r [m]")
-    plt.ylabel("z [m]")
-    plt.title(title or "QFM surface on a Poincare plot (phi=0)")
-    plt.legend(loc="upper left", bbox_to_anchor=(1.02, 1.0))
-    plt.grid(True, linewidth=0.5)
+        for guess in initials:
+            r, z = cross_section_rz(guess, phi)
+            ax.plot(r, z, "--", linewidth=2, color="k", zorder=4,
+                    label="initial guess")
+
+        ax.set_aspect("equal")
+        ax.set_xlabel("r [m]")
+        ax.set_ylabel("z [m]")
+        ax.set_title(f"phi = {phi:.2f}pi")
+        ax.grid(True, linewidth=0.5)
+
+    handles, labels = flat[0].get_legend_handles_labels()
+    figure.legend(handles, labels, loc="center left", bbox_to_anchor=(1.0, 0.5),
+                  fontsize=9)
+    figure.suptitle(title or "QFM surfaces on Poincare sections")
+    figure.tight_layout()
     if filename:
-        plt.savefig(filename, dpi=150, bbox_inches="tight")
+        figure.savefig(filename, dpi=150, bbox_inches="tight")
         print(f"saved plot to {filename}")
     if show:
         plt.show()
@@ -234,7 +265,6 @@ def plot_all(surfaces_by_flux, poincare_r, poincare_z, axis, initials=(),
 
 def resample_surface(surface, nphi=NPHI, ntheta=NTHETA):
     """Make a copy of the surface at a given resolution and grid.
-    Not used in the initial surface script.
     """
     copy = new_surface(surface.mpol, nphi, ntheta)
     copy.x = surface.x
@@ -248,7 +278,7 @@ if __name__ == "__main__":
     from poincare_fieldlines import load_poincare_data
 
     field, axis = build_field(CONFIG)
-    surface, initial_rz, flux, residual = make_qfm_surface(field, axis)
+    surface, guess, flux, residual = make_qfm_surface(field, axis)
     print(f"flux = {flux:.4f} Wb, residual = {residual:.3e}")
 
     if SAVE:
@@ -257,9 +287,9 @@ if __name__ == "__main__":
     else:
         plot_file = None
 
-    r, z, line, panel = load_poincare_data(CONFIG)
-    here = panel == 0                       # panel 0 is phi = 0
-    plot_all([(flux, surface)], r[here], z[here], axis,
-             initials=[initial_rz],
+    r, z, line, panel = load_poincare_data(CONFIG, POINCARE_N, POINCARE_TMAX)
+    plot_all([(flux, surface)], r, z, panel, axis,
+             initials=[guess],
+             phis_over_pi=PLOT_PHIS_OVER_PI,
              filename=plot_file,
-             title=f"QFM surface and initial guess, {CONFIG} (phi=0)")
+             title=f"QFM surface and initial guess, {CONFIG}")

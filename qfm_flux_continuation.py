@@ -11,8 +11,10 @@ We load the anchor surface from the output of initial_qfm_surface.py. We then
 sweep inwards and outwards in flux from that surface to cover the desired
 flux values.
 
-There is an option to save the surfaces and plot the surfaces. 
+There is an option to save the surfaces and plot the surfaces.
 """
+
+import time
 
 import numpy as np
 
@@ -23,13 +25,18 @@ from initial_qfm_surface import (CONFIG, NPHI, NTHETA, optimise_qfm,
                                  plot_all, resample_surface, save_surface,
                                  surface_path)
 # True means save the surface. False means do not save the surface but still show the plot.
-SAVE = True
+SAVE = False
 
 # Choose the 'anchor' surface from which to make new QFM surfaces at different fluxes.
 ANCHOR_FLUX = 0.30
 
+# Select the Poincare data to load from poincare_fieldlines.py
+POINCARE_N = 80           # no. of field lines in the dataset to load
+POINCARE_TMAX = 4000      # tmax of the dataset to load
+
+
 # Which fluxes to calculate QFM surfaces for, in Wb.
-TARGET_FLUXES = np.round(np.arange(0.1, 3.401, 0.1), 4)
+TARGET_FLUXES = np.round(np.arange(0.1, 0.501, 0.1), 4)
 
 # Which QFM surfaces to plot.
 PLOT_FLUXES = (0.10, 0.20, 0.40, 0.60, 0.80, 1.00)
@@ -43,9 +50,11 @@ def continue_to_flux(field, surface, target_flux):
 
     Return the new optimised QFM surface.
     """
+    start = time.perf_counter()
     next_surface = resample_surface(surface, NPHI, NTHETA)
     residual = optimise_qfm(field, next_surface, target_flux)
-    print(f"  flux = {target_flux:.4f} Wb, residual = {residual:.3e}")
+    print(f"  flux = {target_flux:.4f} Wb, residual = {residual:.3e}, "
+          f"{time.perf_counter() - start:.1f} s")
     return next_surface
 
 
@@ -54,6 +63,7 @@ def sweep(field, anchor, targets, anchor_flux=ANCHOR_FLUX, save=SAVE):
 
     Returns family which looks like {flux: surface}.
     """
+    start = time.perf_counter()
     family = {anchor_flux: anchor}
 
 
@@ -66,6 +76,7 @@ def sweep(field, anchor, targets, anchor_flux=ANCHOR_FLUX, save=SAVE):
             if save:
                 save_surface(surface, float(target))
 
+    print(f"{len(family)} surfaces in {time.perf_counter() - start:.0f} s")
     return family
 
 
@@ -83,7 +94,7 @@ if __name__ == "__main__":
 
     plot_file = f"{CONFIG}_qfm_family.png" if SAVE else None
 
-    r, z, line, panel = load_poincare_data(CONFIG)
+    r, z, line, panel = load_poincare_data(CONFIG, POINCARE_N, POINCARE_TMAX)
     chosen = [(f, family[f]) for f in PLOT_FLUXES if f in family]
     plot_all(chosen, r, z, panel, axis,
              phis_over_pi=PLOT_PHIS_OVER_PI,

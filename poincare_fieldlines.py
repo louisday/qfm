@@ -1,12 +1,28 @@
 """Poincare plot for a given W7-X coil configuration.
 
-Field line tracing borrowed from Chris Smiet.
+Field line tracing code adapted from Chris Smiet's code.
 
 Traces field lines through 4 groups of toroidal cross-sections.
 
 E.g. Group 1 is phi/pi = 0.0, 0.4, 0.8, 1.2, 1.6 and all the crossings for this cross section are collated onto panel 1 of the plots.
 
 Run this once for a given configuration and then load the saved .npz data with load_poincare_data() in subsequent scripts.
+
+You must choose the points to trace from carefully to ensure you sample the islands. Here are some examples:
+
+1. For the standard config try:
+R_SPAN = 0.32
+START_PHI_OVER_PI = 0.0
+START_Z = 0.0
+
+since the islands are found along z=0 at phi=0.
+
+2. For the low iota config try:
+R_SPAN = 1.2
+START_PHI_OVER_PI = 0.2
+START_Z = 0.0
+
+since the islands are found along z=0 at phi=0.2pi (the triangle cross-section).
 """
 
 import time
@@ -15,24 +31,27 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from simsopt.field import (InterpolatedField, LevelsetStoppingCriterion,
-                           SurfaceClassifier, compute_fieldlines)
+                           SurfaceClassifier)
 from simsopt.geo import SurfaceRZFourier
+import simsoptpp as sopp
 
 from w7x_config import NFP, build_field
 
 CONFIG = "standard"
 SAVE = True               # save the data and the plot? False shows the plot only.
 
-NFIELDLINES = 80          # no. of field lines, starting from phi=0
-R_SPAN = 0.40             # radial distance from the magnetic axis to the last initial field line position, m
-TMAX = 4000               # how far each line is traced for
+NFIELDLINES = 20          # no. of field lines on the selected launch plane
+R_SPAN = 0.32             # radial distance from the magnetic axis to the last initial field line position, m
+START_PHI_OVER_PI = 0.0    # toroidal initial plane, in units of pi
+START_Z = 0.0              # absolute vertical initial coordinate, m
+TMAX = 10000               # how far each line is traced for
 TRACE_TOLERANCE = 1e-9
 
 DEGREE = 4                # interpolation degree
-GRID_N = 25               # interpolation cells across the minor radius
+GRID_N = 40               # interpolation cells across the minor radius
 
 # Which cross-sections to show. Units are phi/pi so (0.0, 0.1, 0.2, 0.3) is a four panel plot of the first field period.
-PHIS_OVER_PI = (0.0, 0.1, 0.2, 0.3)
+PHIS_OVER_PI = (0.0, 0.1, 0.2, 0.3, 0.4, 0.5,)
 
 
 def build_interpolated_field(field, axis):
@@ -76,18 +95,37 @@ def trace_fieldlines(interpolated, classifier, axis):
     The planes are grouped as [cross section 0 copies, cross section 1 copies, ...].
     So if you want the index of a given crossing within its group then you divide by nfp.
     """
-    r_axis, z_axis = axis.gamma()[0, 0], axis.gamma()[0, 2]
+    start_phi = START_PHI_OVER_PI * np.pi
+    axis_point = np.zeros((1, 3))
+    axis.gamma_impl(axis_point, start_phi / (2*np.pi))
+    r_axis = np.hypot(axis_point[0, 0], axis_point[0, 1])
+
     start_r = r_axis + np.linspace(0, R_SPAN, NFIELDLINES)
-    start_z = [z_axis] * NFIELDLINES
+    start_z = np.full(NFIELDLINES, START_Z)
+
+    print(
+        f"tracing {NFIELDLINES} lines from phi/pi = "
+        f"{START_PHI_OVER_PI:.3f}, Z = {start_z[0]:.6f} m, over "
+        f"R = {start_r[0]:.6f}--{start_r[-1]:.6f} m"
+    )
 
     phis = [p*np.pi + k*2*np.pi/NFP
             for p in PHIS_OVER_PI for k in range(NFP)]
+    stopping_criteria = [LevelsetStoppingCriterion(classifier.dist)]
 
     start = time.perf_counter()
-    _, hits = compute_fieldlines(
-        interpolated, list(start_r), start_z,
-        tmax=TMAX, tol=TRACE_TOLERANCE, phis=phis,
-        stopping_criteria=[LevelsetStoppingCriterion(classifier.dist)])
+    hits = []
+    for r0, z0 in zip(start_r, start_z):
+        xyz0 = np.asarray([
+            r0 * np.cos(start_phi),
+            r0 * np.sin(start_phi),
+            z0,
+        ])
+        _, line_hits = sopp.fieldline_tracing(
+            interpolated, xyz0, TMAX, TRACE_TOLERANCE,
+            phis=phis,
+            stopping_criteria=stopping_criteria)
+        hits.append(np.asarray(line_hits))
     print(f"traced in {time.perf_counter() - start:.1f} s")
 
     r, z, line, panel = [], [], [], []
@@ -106,24 +144,33 @@ def trace_fieldlines(interpolated, classifier, axis):
             np.concatenate(line), np.concatenate(panel))
 
 
-def poincare_name(config=CONFIG, nfieldlines=None, tmax=None):
+def poincare_name(config=CONFIG, nfieldlines=None, tmax=None,
+                  start_phi_over_pi=0.0):
     """Determine the filename to save the data as."""
     if nfieldlines is None:
         nfieldlines = NFIELDLINES
     if tmax is None:
         tmax = TMAX
-    return f"poincare_{config}_N{nfieldlines}_tmax{tmax}"
+    launch_suffix = ""
+    if not np.isclose(start_phi_over_pi, 0.0):
+        launch_suffix = f"_startphi{start_phi_over_pi:.2f}pi"
+    return f"poincare_{config}_N{nfieldlines}_tmax{tmax}{launch_suffix}"
 
 
 def save_poincare_data(r, z, line, panel, config=CONFIG):
-    name = poincare_name(config) + ".npz"
+    name = poincare_name(
+        config, start_phi_over_pi=START_PHI_OVER_PI
+    ) + ".npz"
     np.savez(name, r=r, z=z, line=line, panel=panel)
     print(f"saved {len(r)} points to {name}")
 
 
-def load_poincare_data(config=CONFIG, nfieldlines=None, tmax=None):
+def load_poincare_data(config=CONFIG, nfieldlines=None, tmax=None,
+                       start_phi_over_pi=0.0):
     """Loads the Poincare data. Returns (r, z, line, panel)."""
-    data = np.load(poincare_name(config, nfieldlines, tmax) + ".npz")
+    data = np.load(poincare_name(
+        config, nfieldlines, tmax, start_phi_over_pi
+    ) + ".npz")
     return data["r"], data["z"], data["line"], data["panel"]
 
 
@@ -144,7 +191,9 @@ def plot_poincare(r, z, line, panel, config=CONFIG, save=SAVE):
     figure.suptitle(f"W7-X {config} configuration")
     figure.tight_layout()
     if save:
-        name = poincare_name(config) + ".png"
+        name = poincare_name(
+            config, start_phi_over_pi=START_PHI_OVER_PI
+        ) + ".png"
         figure.savefig(name, dpi=150)
         print(f"saved plot to {name}")
     plt.show()

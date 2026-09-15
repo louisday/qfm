@@ -11,7 +11,7 @@ ie. in the range ~0.2 to 1.5Wb for the standard configuration of W7-X.
 - the grid to optimise on. We find that NPHI = NTHETA = 40 is sufficient.
 - the grid to plot on. This takes the surface and samples points to make a plot and so can be set much higher than above.
 
-The script then makes a QFM surface, saves it and plots at phi=0:
+The script then makes a QFM surface, saves it and plots at four toroidal cross-sections:
  - the Poincare scatter data
  - the magnetic axis
  - the initial tube surface cross-section
@@ -67,8 +67,9 @@ PLOT_PHIS_OVER_PI = (0.0, 0.1, 0.2, 0.3)
 SURFACE_DIR = "qfm surfaces"
 
 # Select the Poincare data to load from poincare_fieldlines.py
-POINCARE_N = 80           # no. of field lines in the dataset to load
+POINCARE_N = 20           # no. of field lines in the dataset to load
 POINCARE_TMAX = 4000      # tmax of the dataset to load
+POINCARE_START_PHI_OVER_PI = 0.0 # the initial toroidal plane of the field line data to load
 
 
 
@@ -189,20 +190,22 @@ def make_qfm_surface(field, axis, target_flux=TARGET_FLUX, mpol=MPOL):
     return surface, guess, toroidal_flux(field, surface), residual
 
 
-def surface_path(flux, config=CONFIG, nphi=NPHI, ntheta=NTHETA, mpol=MPOL):
+def surface_path(flux, config=CONFIG, nphi=NPHI, ntheta=NTHETA, mpol=MPOL,
+                 directory=SURFACE_DIR):
     """Determine the folder & filename to give to each surface.
     New folder for each config. Each surface is labelled by its flux, grid and Fourier resolution
     """
 
-    return (Path(f"{SURFACE_DIR} {config}") /
+    return (Path(f"{directory} {config}") /
             f"qfm_surface_flux_{flux:.4f}"
             f"_nphi{nphi}_ntheta{ntheta}_mpol{mpol}.json")
 
 
-def save_surface(surface, flux, config=CONFIG):
+def save_surface(surface, flux, config=CONFIG, directory=SURFACE_DIR):
     """Save the surface to its corresponding folder."""
     path = surface_path(flux, config, len(surface.quadpoints_phi),
-                        len(surface.quadpoints_theta), surface.mpol)
+                        len(surface.quadpoints_theta), surface.mpol,
+                        directory)
     path.parent.mkdir(parents=True, exist_ok=True)
     surface.save(str(path))
     print(f"saved surface to {path}")
@@ -211,13 +214,18 @@ def save_surface(surface, flux, config=CONFIG):
 
 def plot_all(surfaces_by_flux, poincare_r, poincare_z, poincare_panel, axis,
              initials=(), phis_over_pi=PLOT_PHIS_OVER_PI,
-             filename=None, title="", show=True):
+             filename=None, title="", show=True, section=None):
     """Plot QFM surfaces over the Poincare data at the specified cross-sections.
 
     surfaces_by_flux is a list of (flux, surface).
     initials is a list of initial surfaces, drawn dashed.
     phis_over_pi determines the cross-section.
+    section is how a surface is sliced, and defaults to cross_section_rz.
+    Boozer surfaces need their own slicer because they are parametrised by Boozer
+    angles rather than geometric angles.
     """
+    if section is None:
+        section = cross_section_rz
     traced = np.asarray(TRACED_PHIS)
     panel_for = [int(np.argmin(np.abs(traced - p))) for p in phis_over_pi]
 
@@ -238,7 +246,7 @@ def plot_all(surfaces_by_flux, poincare_r, poincare_z, poincare_panel, axis,
                    linewidths=0)
 
         for flux, surface in surfaces_by_flux:
-            r, z = cross_section_rz(surface, phi)
+            r, z = section(surface, phi)
             ax.plot(r, z, "-", linewidth=1.5, label=f"flux = {flux:.3f} Wb")
 
         for guess in initials:
@@ -288,10 +296,11 @@ if __name__ == "__main__":
     else:
         plot_file = None
 
-    r, z, line, panel = load_poincare_data(CONFIG, POINCARE_N, POINCARE_TMAX)
+    r, z, line, panel = load_poincare_data(
+        CONFIG, POINCARE_N, POINCARE_TMAX, POINCARE_START_PHI_OVER_PI
+    )
     plot_all([(flux, surface)], r, z, panel, axis,
              initials=[guess],
              phis_over_pi=PLOT_PHIS_OVER_PI,
              filename=plot_file,
              title=f"QFM surface and initial guess, {CONFIG}")
-

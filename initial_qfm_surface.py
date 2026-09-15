@@ -11,7 +11,8 @@ ie. in the range ~0.2 to 1.5Wb for the standard configuration of W7-X.
 - the grid to optimise on. We find that NPHI = NTHETA = 40 is sufficient.
 - the grid to plot on. This takes the surface and samples points to make a plot and so can be set much higher than above.
 
-The script then makes a QFM surface, saves it and plots at four toroidal cross-sections:
+The script saves the surface as qfm_initial_surface_[config]_flux_...json file.
+The script also plots at four toroidal cross-sections:
  - the Poincare scatter data
  - the magnetic axis
  - the initial tube surface cross-section
@@ -19,7 +20,7 @@ The script then makes a QFM surface, saves it and plots at four toroidal cross-s
 
 
 To compute QFM surfaces outside the recommended flux range it is safer/more successful to use the
-flux continuation script.
+qfm_full_set.py.
 
 
 """
@@ -63,12 +64,12 @@ CUSP_NTHETA = 3000        # samples used to resolve a cusp
 # Which cross-sections to show. Units are phi/pi so (0.0, 0.1, 0.2, 0.3) is a four panel plot of the first field period.
 PLOT_PHIS_OVER_PI = (0.0, 0.1, 0.2, 0.3)
 
-# The folder name to save surfaces into. They will be saved as "qfm surfaces [config]".
-SURFACE_DIR = "qfm surfaces"
+# Shared family folder for continuation and all later scripts.
+SURFACE_DIR = "qfm full set"
 
 # Select the Poincare data to load from poincare_fieldlines.py
 POINCARE_N = 20           # no. of field lines in the dataset to load
-POINCARE_TMAX = 4000      # tmax of the dataset to load
+POINCARE_TMAX = 10000      # tmax of the dataset to load
 POINCARE_START_PHI_OVER_PI = 0.0 # the initial toroidal plane of the field line data to load
 
 
@@ -190,6 +191,22 @@ def make_qfm_surface(field, axis, target_flux=TARGET_FLUX, mpol=MPOL):
     return surface, guess, toroidal_flux(field, surface), residual
 
 
+def initial_surface_path(flux=TARGET_FLUX, config=CONFIG, nphi=NPHI,
+                         ntheta=NTHETA, mpol=MPOL):
+    """Standalone initial surface, labelled by configuration, flux and resolution."""
+    return Path(f"qfm_initial_surface_{config}_flux_{flux:.4f}"
+                f"_nphi{nphi}_ntheta{ntheta}_mpol{mpol}.json")
+
+
+def save_initial_surface(surface, flux, config=CONFIG):
+    """Save one initial surface in the working directory."""
+    path = initial_surface_path(flux, config, len(surface.quadpoints_phi),
+                                len(surface.quadpoints_theta), surface.mpol)
+    surface.save(str(path))
+    print(f"saved initial surface to {path}")
+    return path
+
+
 def surface_path(flux, config=CONFIG, nphi=NPHI, ntheta=NTHETA, mpol=MPOL,
                  directory=SURFACE_DIR):
     """Determine the folder & filename to give to each surface.
@@ -291,7 +308,7 @@ if __name__ == "__main__":
     print(f"flux = {flux:.4f} Wb, residual = {residual:.3e}")
 
     if SAVE:
-        save_surface(surface, flux)
+        save_initial_surface(surface, TARGET_FLUX)
         plot_file = f"{CONFIG}_initial_qfm_surface.png"
     else:
         plot_file = None

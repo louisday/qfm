@@ -8,6 +8,11 @@ This can be achieved by setting MPOL_FIRST = 6 and MPOL_MAX = 25.
 
 This ladder approach is much less likely to produce cusps and degenerate surfaces.
 
+Each surface is saved. RESUME determines whether to use surfaces that already exist.
+Surfaces are saved with their mpol and grid but not the surfaces that it was
+optimised from. Set RESUME = False to recompute every surface and overwrite any
+surfaces with the same name.
+
 We include a speed_ratio for each surface which is a diagnostic designed to allow us to spot
 when surfaces have become cusped. The speed ratio should be around 0.3 for a healthy/smooth surface.
 """
@@ -23,19 +28,26 @@ from initial_qfm_surface import (CONFIG, CUSP_NTHETA, NPHI, cross_section_rz,
                                  save_surface, surface_path)
 
 # True means save each surface. False means do not save the surface but still show the plot.
-SAVE = False
+SAVE = True
+
+# True loads any surfaces that are already computed. False recomputes and overwrites every surface.
+RESUME = True
+
+# Specify which library to import from.
+SURFACE_DIR = "qfm full set"
 
 MPOL_SOURCE = 3           # current resolution of the surfaces to use
-SOURCE_GRID = 80          # current grid that the surfaces were made on
+SOURCE_GRID = 40          # current grid that the surfaces were made on
 MPOL_FIRST = 6            # first jump in mpol from the source
-MPOL_MAX = 10             # then we increase to this mpol in steps of 1
+MPOL_MAX = 25             # then we increase to this mpol in steps of 1
 
 # Fluxes to increase in mpol. These surfaces must exist at the MPOL_SOURCE and SOURCE_GRID you specify.
-FLUXES = (2.30,)
+FLUXES = (2.8,)
 
 # Select the Poincare data to load from poincare_fieldlines.py
-POINCARE_N = 80           # no. of field lines in the dataset to load
+POINCARE_N = 80          # no. of field lines in the dataset to load
 POINCARE_TMAX = 4000      # tmax of the dataset to load
+POINCARE_START_PHI_OVER_PI = 0.0   # initial toroidal plane of field line data to load
 
 # Choose which cross-sections to show. Units are phi/pi so (0.0, 0.1, 0.2, 0.3) is a four panel plot of the first field period.
 PLOT_PHIS_OVER_PI = (0.0, 0.1, 0.2, 0.3)
@@ -77,9 +89,13 @@ if __name__ == "__main__":
     field, axis = build_field(CONFIG)
     increased = []
 
+    print(f"library: {SURFACE_DIR} {CONFIG}")
+    print(f"source:  mpol={MPOL_SOURCE} at {SOURCE_GRID}x{SOURCE_GRID}"
+          f"{'' if RESUME else '   (RESUME off - every rung recomputed)'}")
+
     for flux in FLUXES:
         source = surface_path(flux, nphi=SOURCE_GRID, ntheta=SOURCE_GRID,
-                              mpol=MPOL_SOURCE)
+                              mpol=MPOL_SOURCE, directory=SURFACE_DIR)
         if not source.exists():
             print(f"skipping {flux} Wb, no source surface at {source}")
             continue
@@ -89,11 +105,12 @@ if __name__ == "__main__":
 
         for mpol in MPOLS:
             grid = grid_for(mpol)
-            path = surface_path(flux, nphi=grid, ntheta=grid, mpol=mpol)
+            path = surface_path(flux, nphi=grid, ntheta=grid, mpol=mpol,
+                                directory=SURFACE_DIR)
 
-            if path.exists():
+            if RESUME and path.exists():
                 surface = load(str(path))
-                print(f"  mpol={mpol:2d}  already saved")
+                print(f"  mpol={mpol:2d}  already saved, reused")
                 continue
 
             start = time.perf_counter()
@@ -103,13 +120,15 @@ if __name__ == "__main__":
                   f"{time.perf_counter() - start:.0f} s")
 
             if SAVE:
-                save_surface(surface, flux)
+                save_surface(surface, flux, directory=SURFACE_DIR)
 
         increased.append((flux, surface))
 
     plot_file = f"{CONFIG}_qfm_mpol{MPOL_MAX}.png" if SAVE else None
 
-    r, z, line, panel = load_poincare_data(CONFIG, POINCARE_N, POINCARE_TMAX)
+    r, z, line, panel = load_poincare_data(
+        CONFIG, POINCARE_N, POINCARE_TMAX, POINCARE_START_PHI_OVER_PI
+    )
     plot_all(increased, r, z, panel, axis,
              phis_over_pi=PLOT_PHIS_OVER_PI,
              filename=plot_file,

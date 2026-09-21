@@ -20,7 +20,7 @@ Here is the link to download `simsopt`:https://pypi.org/project/simsopt/.
 
 Here is a link to documentation for `simsopt`: https://simsopt.readthedocs.io/latest/.
 
-Any comments/suggestions/queries can be sent to: [Louis Day](louisday81@gmail.com).
+Any comments/suggestions/queries can be sent to: [Louis Day](<louisday81@gmail.com>).
 
 This work was completed during a summer internship at the Max Planck Institute for Plasma Physics in Greifswald, Germany.
 There is an accompanying report on this project.

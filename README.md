@@ -55,7 +55,14 @@ Using the above we can write
 $$ A_{m,n} = 2\langle b_r, \sin(m\theta-n\phi)\rangle, $$
 $$ B_{m,n} = 2\langle b_r, \cos(m\theta-n\phi)\rangle. $$
 
-Where 
-$$\langle f,g \rangle  = \frac{n_{fp}}{4\pi^2} \int^{2\pi/n_{fp}}_0 d\phi \int^{2\pi}_{0} d\theta\  f(\theta, \phi)\cdot g(\theta, \phi),$$
+Where
+
+```math
+\langle f,g \rangle =
+\frac{n_{fp}}{4\pi^2}
+\int_{0}^{2\pi/n_{fp}} \mathrm{d}\phi
+\int_{0}^{2\pi} \mathrm{d}\theta\,
+f(\theta,\phi)\cdot g(\theta,\phi),
+```
 
 defines an inner product. In `bn_spectrum.py` this integral is approximated using a weighted summation.

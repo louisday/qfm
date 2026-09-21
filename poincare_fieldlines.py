@@ -40,7 +40,7 @@ from w7x_config import NFP, build_field
 CONFIG = "standard"
 SAVE = True               # save the data and the plot? False shows the plot only.
 
-NFIELDLINES = 20          # no. of field lines on the selected launch plane
+NFIELDLINES = 30          # no. of field lines on the selected launch plane
 R_SPAN = 0.32             # radial distance from the magnetic axis to the last initial field line position, m
 START_PHI_OVER_PI = 0.0    # toroidal initial plane, in units of pi
 START_Z = 0.0              # absolute vertical initial coordinate, m
@@ -51,7 +51,7 @@ DEGREE = 4                # interpolation degree
 GRID_N = 40               # interpolation cells across the minor radius
 
 # Which cross-sections to show. Units are phi/pi so (0.0, 0.1, 0.2, 0.3) is a four panel plot of the first field period.
-PHIS_OVER_PI = (0.0, 0.1, 0.2, 0.3, 0.4, 0.5,)
+PHIS_OVER_PI = (0.0, 0.1, 0.2, 0.3,)
 
 
 def build_interpolated_field(field, axis):
